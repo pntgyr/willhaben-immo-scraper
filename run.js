@@ -300,6 +300,21 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
                             white-space: nowrap; }
     .district-panel label:hover { background: #383c48; }
     .district-panel input[type=checkbox] { accent-color: #0a58ca; cursor: pointer; width: 13px; height: 13px; }
+    .sync-filter { position: relative; }
+    .sync-panel { display: none; position: absolute; top: calc(100% + 6px); right: 0; background: #2a2d35;
+                  border: 1px solid #555; border-radius: 6px; padding: 8px; min-width: 240px;
+                  z-index: 200; flex-direction: column; gap: 6px;
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .sync-panel.open { display: flex; }
+    .sync-panel label { font-size: 11px; color: #9aa; margin-bottom: 1px; }
+    .sync-panel input[type=password], .sync-panel input[type=text] {
+      width: 100%; padding: 4px 7px; border: 1px solid #555; border-radius: 4px;
+      background: #1a1d23; color: #d0d4e0; font-size: 12px; }
+    .sync-row { display: flex; gap: 4px; }
+    .sync-row button { flex: 1; padding: 4px 0; font-size: 12px; border: 1px solid #555;
+                       border-radius: 4px; background: #383c48; color: #d0d4e0; cursor: pointer; }
+    .sync-row button:hover { background: #444a58; }
+    .sync-status { font-size: 11px; color: #9aa; min-height: 14px; }
     main { padding: 14px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
             gap: 12px; max-width: 1600px; margin: 0 auto; }
@@ -385,6 +400,32 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
   <button id="btn-show-hidden"   onclick="toggleUiFilter('hidden')">Show hidden</button>
   <button id="btn-refresh" onclick="doRefresh()" style="background:#1a3a1a;border-color:#2a5a2a;color:#6f6;">↺ Re-scrape</button>
   <span id="refresh-status" style="font-size:11px;color:#9aa;"></span>
+
+  <div class="sep"></div>
+
+  <button onclick="exportState()" title="Download state as JSON">↓ Export</button>
+  <button onclick="document.getElementById('import-file').click()" title="Load state from JSON file">↑ Import</button>
+  <input id="import-file" type="file" accept=".json" onchange="importState(this)" style="display:none">
+
+  <div class="sync-filter" id="sync-filter">
+    <button id="btn-gist" onclick="toggleSyncPanel()">⚡ Gist ▾</button>
+    <div class="sync-panel" id="sync-panel">
+      <div>
+        <label>GitHub token (repo/gist scope)</label>
+        <input id="gist-token" type="password" placeholder="ghp_…" oninput="saveGistConfig()">
+      </div>
+      <div>
+        <label>Gist ID <span style="color:#667">(auto-filled after first push)</span></label>
+        <input id="gist-id" type="text" placeholder="leave blank to create new" oninput="saveGistConfig()">
+      </div>
+      <div class="sync-row">
+        <button onclick="pushToGist()">↑ Push</button>
+        <button onclick="pullFromGist()">↓ Pull</button>
+      </div>
+      <div class="sync-status" id="gist-status"></div>
+    </div>
+  </div>
+
   <a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">↗ Search</a>
   <span class="hdr-meta">Scraped: ${esc(scrapedAt)}</span>
 </header>
@@ -394,6 +435,7 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
 </main>
 <script>
   const STATE_KEY = "willhaben_v1";
+  const GIST_KEY  = "willhaben_gist";
   const loadState = () => { try { return JSON.parse(localStorage.getItem(STATE_KEY) || "{}"); } catch { return {}; } };
   const saveState = (s) => localStorage.setItem(STATE_KEY, JSON.stringify(s));
   const getSet = (k) => new Set(loadState()[k] || []);
@@ -402,6 +444,74 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     set.has(url) ? set.delete(url) : set.add(url);
     saveState({ ...s, [k]: [...set] });
   };
+
+  // ── Export / Import ──────────────────────────────────────────────────────────
+  const adsSnapshot = () => ({ starred: [...getSet("starred")], hidden: [...getSet("hidden")] });
+  const mergeAds = (incoming) => {
+    const s = loadState();
+    const starred = new Set([...(s.starred || []), ...(incoming.starred || [])]);
+    const hidden  = new Set([...(s.hidden  || []), ...(incoming.hidden  || [])]);
+    saveState({ ...s, starred: [...starred], hidden: [...hidden] });
+  };
+
+  function exportState() {
+    const blob = new Blob([JSON.stringify(adsSnapshot(), null, 2)], { type: "application/json" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "willhaben-state.json" });
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+  function importState(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => { try { mergeAds(JSON.parse(e.target.result)); applyAll(); } catch { alert("Invalid JSON file"); } };
+    reader.readAsText(file);
+    input.value = "";
+  }
+
+  // ── Gist sync ────────────────────────────────────────────────────────────────
+  const loadGistCfg = () => { try { return JSON.parse(localStorage.getItem(GIST_KEY) || "{}"); } catch { return {}; } };
+  const saveGistConfig = () => {
+    localStorage.setItem(GIST_KEY, JSON.stringify({
+      token: document.getElementById("gist-token").value.trim(),
+      gistId: document.getElementById("gist-id").value.trim(),
+    }));
+  };
+  function toggleSyncPanel() { document.getElementById("sync-panel").classList.toggle("open"); }
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("sync-filter").contains(e.target))
+      document.getElementById("sync-panel").classList.remove("open");
+  });
+  function gistStatus(msg, err) {
+    const el = document.getElementById("gist-status");
+    el.textContent = msg; el.style.color = err ? "#f87" : "#6a6";
+  }
+  async function pushToGist() {
+    const { token, gistId } = loadGistCfg();
+    if (!token) { gistStatus("Token required", true); return; }
+    gistStatus("Pushing…");
+    const body = { description: "willhaben scraper state", public: false,
+      files: { "willhaben-state.json": { content: JSON.stringify(adsSnapshot(), null, 2) } } };
+    const url = gistId ? "https://api.github.com/gists/" + gistId : "https://api.github.com/gists";
+    const res = await fetch(url, { method: gistId ? "PATCH" : "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify(body) });
+    if (!res.ok) { gistStatus("Error " + res.status, true); return; }
+    const data = await res.json();
+    if (!gistId) { document.getElementById("gist-id").value = data.id; saveGistConfig(); }
+    gistStatus("Pushed ✓ " + new Date().toLocaleTimeString());
+  }
+  async function pullFromGist() {
+    const { token, gistId } = loadGistCfg();
+    if (!token || !gistId) { gistStatus("Token + Gist ID required", true); return; }
+    gistStatus("Pulling…");
+    const res = await fetch("https://api.github.com/gists/" + gistId,
+      { headers: { Authorization: "Bearer " + token } });
+    if (!res.ok) { gistStatus("Error " + res.status, true); return; }
+    const data = await res.json();
+    const content = data.files["willhaben-state.json"]?.content;
+    if (!content) { gistStatus("File not found in gist", true); return; }
+    try { mergeAds(JSON.parse(content)); applyAll(); gistStatus("Pulled ✓ " + new Date().toLocaleTimeString()); }
+    catch { gistStatus("Invalid gist content", true); }
+  }
 
   let uiFilters = { starred: false, hidden: false, matching: false };
 
@@ -506,6 +616,11 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     document.getElementById("count-meta").textContent =
       visible + "/" + total + " shown · ★ " + sc + " · hidden " + hc;
   }
+
+  // Restore gist config inputs
+  const _gc = loadGistCfg();
+  if (_gc.token) document.getElementById("gist-token").value = _gc.token;
+  if (_gc.gistId) document.getElementById("gist-id").value = _gc.gistId;
 
   // Restore excluded districts from localStorage
   const _excSaved = loadState().excludedDistricts || [];
