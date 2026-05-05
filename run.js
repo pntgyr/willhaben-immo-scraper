@@ -188,7 +188,7 @@ const detectFeatures = (r) => {
     abstellraum: fkeys.includes("abstellraum"),
     outdoor:     hasOutdoor,
   };
-  const passes = criteria.badewanne && criteria.keller && criteria.abstellraum && criteria.outdoor;
+  const passes = criteria.badewanne && criteria.keller && criteria.abstellraum;
 
   // Strip criteria labels from badges — criteria bar already shows them
   const CRITERIA_LABELS = new Set(["badewanne","keller","abstellraum","loggia","balkon","terrasse","dachterrasse","garten","wintergarten"]);
@@ -203,8 +203,11 @@ const eurPerSqm = (price, sqm) => {
 };
 
 const toHtml = (rows, sourceUrl, scrapedAt) => {
-  // Collect unique districts for dropdown
+  // Collect unique districts for checklist
   const districts = [...new Set(rows.map((r) => r.district).filter(Boolean))].sort();
+  const districtCheckboxes = districts.map((d) =>
+    `<label><input type="checkbox" value="${esc(d)}" checked onchange="saveDistricts()"> ${esc(d)}</label>`
+  ).join("\n      ");
 
   const cards = rows.map((r) => {
     const { features, moebliert, criteria, passes } = detectFeatures(r);
@@ -217,11 +220,12 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     ).join("");
     const featureKeys = features.map((f) => f.label.toLowerCase()).join(",");
     const crit = (ok, label) => `<span class="crit ${ok ? "crit-ok" : "crit-miss"}">${ok ? "✓" : "✗"} ${label}</span>`;
+    const outdoorLabel = `<strong class="outdoor-label ${criteria.outdoor ? "outdoor-present" : "outdoor-missing"}">Outdoor</strong>`;
     const criteriaBar = `<div class="criteria-bar">
       ${crit(criteria.badewanne, "Badewanne")}
       ${crit(criteria.keller, "Keller")}
       ${crit(criteria.abstellraum, "Abstellraum")}
-      ${crit(criteria.outdoor, "Outdoor")}
+      ${outdoorLabel}
       ${moebliert ? '<span class="crit crit-warn">⚠ Möbliert</span>' : ""}
     </div>`;
     return `
@@ -255,8 +259,6 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     </article>`;
   }).join("");
 
-  const districtOptions = districts.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
-
   return `<!doctype html>
 <html lang="de">
 <head>
@@ -282,6 +284,22 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     select { padding: 5px 8px; border: 1px solid #444; border-radius: 5px;
              background: #2a2d35; color: #d0d4e0; font-size: 12px; cursor: pointer; }
     .sep { width: 1px; height: 20px; background: #444; flex-shrink: 0; }
+    .district-filter { position: relative; }
+    .district-panel { display: none; position: absolute; top: calc(100% + 6px); left: 0; background: #2a2d35;
+                      border: 1px solid #555; border-radius: 6px; padding: 6px; min-width: 160px;
+                      z-index: 200; flex-direction: column; gap: 2px;
+                      box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .district-panel.open { display: flex; }
+    .district-panel-hdr { display: flex; gap: 4px; padding-bottom: 5px; margin-bottom: 2px;
+                          border-bottom: 1px solid #444; }
+    .district-panel-hdr button { flex: 1; padding: 3px 0; font-size: 11px; border: 1px solid #555;
+                                  border-radius: 4px; background: #383c48; color: #d0d4e0; cursor: pointer; }
+    .district-panel-hdr button:hover { background: #444a58; }
+    .district-panel label { display: flex; align-items: center; gap: 7px; font-size: 12px;
+                            color: #d0d4e0; cursor: pointer; padding: 2px 4px; border-radius: 3px;
+                            white-space: nowrap; }
+    .district-panel label:hover { background: #383c48; }
+    .district-panel input[type=checkbox] { accent-color: #0a58ca; cursor: pointer; width: 13px; height: 13px; }
     main { padding: 14px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
             gap: 12px; max-width: 1600px; margin: 0 auto; }
@@ -290,7 +308,10 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     .card.starred { border-color: #f5c542; box-shadow: 0 0 0 2px #f5c54255; }
     .card.hidden { display: none; }
     .card.hidden.show-hidden { display: flex; opacity: 0.4; }
-    .card.dim { opacity: 0.35; }
+    .card.dim { opacity: 0.55; filter: grayscale(20%); }
+    .outdoor-label { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+    .outdoor-present { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .outdoor-missing { color: #aaa; background: #f5f5f5; border: 1px solid #e0e0e0; text-decoration: line-through; }
     .imgs { display: flex; gap: 2px; height: 180px; background: #dde; flex-shrink: 0; overflow: hidden; }
     .imgs img { flex: 1; min-width: 0; height: 100%; object-fit: cover; }
     .noimg { width: 100%; display: flex; align-items: center; justify-content: center;
@@ -343,10 +364,16 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     <option value="eps-desc">€/m² ↓</option>
   </select>
 
-  <select id="sel-district" onchange="applyAll()">
-    <option value="">All districts</option>
-    ${districtOptions}
-  </select>
+  <div class="district-filter" id="district-filter">
+    <button id="btn-districts" onclick="toggleDistrictPanel()">Districts ▾</button>
+    <div class="district-panel" id="district-panel" hidden>
+      <div class="district-panel-hdr">
+        <button onclick="toggleAllDistricts(true)">All</button>
+        <button onclick="toggleAllDistricts(false)">None</button>
+      </div>
+      ${districtCheckboxes}
+    </div>
+  </div>
 
   <div class="sep"></div>
 
@@ -394,11 +421,37 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     applyAll();
   }
 
+  function toggleDistrictPanel() {
+    document.getElementById("district-panel").classList.toggle("open");
+  }
+  function toggleAllDistricts(selectAll) {
+    for (const box of document.querySelectorAll("#district-panel input[type=checkbox]")) box.checked = selectAll;
+    saveDistricts();
+  }
+  function saveDistricts() {
+    const boxes = [...document.querySelectorAll("#district-panel input[type=checkbox]")];
+    const unchecked = boxes.filter(b => !b.checked).map(b => b.value);
+    const s = loadState();
+    saveState({ ...s, excludedDistricts: unchecked });
+    updateDistrictBtn();
+    applyAll();
+  }
+  function updateDistrictBtn() {
+    const boxes = [...document.querySelectorAll("#district-panel input[type=checkbox]")];
+    const checked = boxes.filter(b => b.checked).length;
+    document.getElementById("btn-districts").textContent =
+      checked === boxes.length ? "Districts ▾" : "Districts (" + checked + "/" + boxes.length + ") ▾";
+  }
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("district-filter").contains(e.target))
+      document.getElementById("district-panel").hidden = true;
+  });
+
   function applyAll() {
     const starred   = getSet("starred");
     const hidden    = getSet("hidden");
     const sortVal   = document.getElementById("sel-sort").value;
-    const district  = document.getElementById("sel-district").value;
+    const excluded  = new Set([...document.querySelectorAll("#district-panel input[type=checkbox]:not(:checked)")].map(b => b.value));
 
     const allCards = Array.from(document.querySelectorAll(".card"));
     let visible = 0;
@@ -423,7 +476,7 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
       if (uiFilters.starred && !isStar) show = false;
       if (isHide && !uiFilters.hidden) show = false;
       const isDim = card.classList.contains("dim");
-      if (district && card.dataset.district !== district) show = false;
+      if (excluded.has(card.dataset.district)) show = false;
       if (uiFilters.matching && isDim) show = false;
 
       card.style.display = show ? "" : "none";
@@ -453,6 +506,12 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     document.getElementById("count-meta").textContent =
       visible + "/" + total + " shown · ★ " + sc + " · hidden " + hc;
   }
+
+  // Restore excluded districts from localStorage
+  const _excSaved = loadState().excludedDistricts || [];
+  for (const box of document.querySelectorAll("#district-panel input[type=checkbox]"))
+    if (_excSaved.includes(box.value)) box.checked = false;
+  updateDistrictBtn();
 
   applyAll();
 
