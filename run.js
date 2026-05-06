@@ -395,7 +395,7 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
 
   <div class="sep"></div>
 
-  <select id="sel-sort" onchange="applyAll()">
+  <select id="sel-sort" onchange="saveUI(); applyAll()">
     <option value="">— sort —</option>
     <option value="price-asc">Price ↑</option>
     <option value="price-desc">Price ↓</option>
@@ -440,6 +440,13 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
 <script>
   const STATE_KEY = "willhaben_v1";
   const GIST_KEY  = "willhaben_gist";
+  const UI_KEY    = "willhaben_ui";
+  const loadUI  = () => { try { return JSON.parse(localStorage.getItem(UI_KEY) || "{}"); } catch { return {}; } };
+  const saveUI  = () => localStorage.setItem(UI_KEY, JSON.stringify({
+    matching: uiFilters.matching, starred: uiFilters.starred, hidden: uiFilters.hidden,
+    sort: document.getElementById("sel-sort").value,
+    excludedDistricts: [...document.querySelectorAll("#district-panel input[type=checkbox]:not(:checked)")].map(b => b.value),
+  }));
   const loadState = () => { try { return JSON.parse(localStorage.getItem(STATE_KEY) || "{}"); } catch { return {}; } };
   const saveState = (s) => localStorage.setItem(STATE_KEY, JSON.stringify(s));
   const getSet = (k) => new Set(loadState()[k] || []);
@@ -565,6 +572,7 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     document.getElementById("btn-only-starred").classList.toggle("active", uiFilters.starred);
     document.getElementById("btn-show-hidden").classList.toggle("active", uiFilters.hidden);
     document.getElementById("btn-matching").classList.toggle("active", uiFilters.matching);
+    saveUI();
     applyAll();
   }
 
@@ -576,11 +584,8 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     saveDistricts();
   }
   function saveDistricts() {
-    const boxes = [...document.querySelectorAll("#district-panel input[type=checkbox]")];
-    const unchecked = boxes.filter(b => !b.checked).map(b => b.value);
-    const s = loadState();
-    saveState({ ...s, excludedDistricts: unchecked });
     updateDistrictBtn();
+    saveUI();
     applyAll();
   }
   function updateDistrictBtn() {
@@ -660,11 +665,16 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
   if (_gc.gistId) document.getElementById("gist-id").value = _gc.gistId;
   else if (PRESET_GIST_ID) { document.getElementById("gist-id").value = PRESET_GIST_ID; saveGistConfig(); }
 
-  // Restore excluded districts from localStorage
-  const _excSaved = loadState().excludedDistricts || [];
+  // Restore UI filters
+  const _ui = loadUI();
+  const _excSaved = _ui.excludedDistricts || loadState().excludedDistricts || [];
   for (const box of document.querySelectorAll("#district-panel input[type=checkbox]"))
     if (_excSaved.includes(box.value)) box.checked = false;
   updateDistrictBtn();
+  if (_ui.matching) { uiFilters.matching = true; document.getElementById("btn-matching").classList.add("active"); }
+  if (_ui.starred)  { uiFilters.starred  = true; document.getElementById("btn-only-starred").classList.add("active"); }
+  if (_ui.hidden)   { uiFilters.hidden   = true; document.getElementById("btn-show-hidden").classList.add("active"); }
+  if (_ui.sort)     document.getElementById("sel-sort").value = _ui.sort;
 
   applyAll();
 
