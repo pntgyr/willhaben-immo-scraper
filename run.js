@@ -35,6 +35,9 @@ const URL_BUILDER = {
   REQUIRE_OUTDOOR: [],         // e.g. ["balkon","loggia"] — FREE_AREA/FREE_AREA_TYPE
 };
 
+// Your private gist ID — safe to commit (requires token to read/write)
+const GIST_ID = "4843112327aea1ad3adeedb0578607f1";
+
 const OUTDOOR_CODES = { balkon: 20, loggia: 30, terrasse: 10, dachterrasse: 40 };
 
 const buildSearchUrl = (b = URL_BUILDER, page = 1) => {
@@ -300,21 +303,44 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
                             white-space: nowrap; }
     .district-panel label:hover { background: #383c48; }
     .district-panel input[type=checkbox] { accent-color: #0a58ca; cursor: pointer; width: 13px; height: 13px; }
-    .sync-filter { position: relative; }
-    .sync-panel { display: none; position: absolute; top: calc(100% + 6px); right: 0; background: #2a2d35;
-                  border: 1px solid #555; border-radius: 6px; padding: 8px; min-width: 240px;
-                  z-index: 200; flex-direction: column; gap: 6px;
-                  box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-    .sync-panel.open { display: flex; }
-    .sync-panel label { font-size: 11px; color: #9aa; margin-bottom: 1px; }
-    .sync-panel input[type=password], .sync-panel input[type=text] {
-      width: 100%; padding: 4px 7px; border: 1px solid #555; border-radius: 4px;
-      background: #1a1d23; color: #d0d4e0; font-size: 12px; }
-    .sync-row { display: flex; gap: 4px; }
-    .sync-row button { flex: 1; padding: 4px 0; font-size: 12px; border: 1px solid #555;
-                       border-radius: 4px; background: #383c48; color: #d0d4e0; cursor: pointer; }
-    .sync-row button:hover { background: #444a58; }
-    .sync-status { font-size: 11px; color: #9aa; min-height: 14px; }
+    #sync-indicator { font-size: 11px; color: #9aa; white-space: nowrap; }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 400; }
+    .sidebar-overlay.open { display: block; }
+    .sidebar { position: fixed; right: 0; top: 0; height: 100vh; width: 280px; background: #1a1d23;
+               border-left: 1px solid #444; z-index: 401; display: flex; flex-direction: column;
+               padding: 0; transform: translateX(100%); transition: transform 0.2s ease; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-hdr { display: flex; align-items: center; justify-content: space-between;
+                   padding: 12px 16px; border-bottom: 1px solid #333; }
+    .sidebar-hdr span { font-size: 13px; font-weight: 600; color: #e8eaf0; }
+    .sidebar-hdr button { background: none; border: none; color: #9aa; font-size: 16px; cursor: pointer; padding: 2px 6px; }
+    .sidebar-hdr button:hover { color: #e8eaf0; }
+    .sidebar-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; flex: 1; overflow-y: auto; }
+    .sidebar-body label { font-size: 11px; color: #9aa; display: block; margin-bottom: 3px; }
+    .sidebar-body input[type=password], .sidebar-body input[type=text] {
+      width: 100%; padding: 5px 8px; border: 1px solid #444; border-radius: 4px;
+      background: #0d0f13; color: #d0d4e0; font-size: 12px; }
+    .sidebar-btn-row { display: flex; gap: 6px; }
+    .sidebar-btn-row button { flex: 1; padding: 6px 0; font-size: 12px; border: 1px solid #444;
+                               border-radius: 4px; background: #2a2d35; color: #d0d4e0; cursor: pointer; }
+    .sidebar-btn-row button:hover { background: #383c48; }
+    .sidebar-status { font-size: 11px; color: #9aa; min-height: 15px; }
+    .sidebar-info { font-size: 11px; color: #667; line-height: 1.5; border-top: 1px solid #333; padding-top: 10px; }
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                      z-index: 500; align-items: center; justify-content: center; }
+    .modal-backdrop.open { display: flex; }
+    .modal-box { background: #2a2d35; border: 1px solid #555; border-radius: 8px; padding: 20px;
+                 max-width: 320px; width: 90%; display: flex; flex-direction: column; gap: 10px; }
+    .modal-box h3 { margin: 0; font-size: 14px; color: #e8eaf0; }
+    .modal-box p { margin: 0; font-size: 12px; color: #9aa; line-height: 1.5; }
+    .modal-box input { width: 100%; padding: 6px 8px; border: 1px solid #444; border-radius: 4px;
+                       background: #0d0f13; color: #d0d4e0; font-size: 13px; }
+    .modal-btn-row { display: flex; gap: 8px; }
+    .modal-btn-row button { flex: 1; padding: 7px 0; font-size: 12px; border: 1px solid #444;
+                             border-radius: 4px; background: #2a2d35; color: #d0d4e0; cursor: pointer; }
+    .modal-btn-row button:first-child { background: #0a58ca; border-color: #0a58ca; color: #fff; }
+    .modal-btn-row button:first-child:hover { background: #0847a8; }
+    .modal-btn-row button:last-child:hover { background: #383c48; }
     main { padding: 14px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
             gap: 12px; max-width: 1600px; margin: 0 auto; }
@@ -401,30 +427,8 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
   <button id="btn-refresh" onclick="doRefresh()" style="background:#1a3a1a;border-color:#2a5a2a;color:#6f6;">↺ Re-scrape</button>
   <span id="refresh-status" style="font-size:11px;color:#9aa;"></span>
 
-  <div class="sep"></div>
-
-  <button onclick="exportState()" title="Download state as JSON">↓ Export</button>
-  <button onclick="document.getElementById('import-file').click()" title="Load state from JSON file">↑ Import</button>
-  <input id="import-file" type="file" accept=".json" onchange="importState(this)" style="display:none">
-
-  <div class="sync-filter" id="sync-filter">
-    <button id="btn-gist" onclick="toggleSyncPanel()">⚡ Gist ▾</button>
-    <div class="sync-panel" id="sync-panel">
-      <div>
-        <label>GitHub token (repo/gist scope)</label>
-        <input id="gist-token" type="password" placeholder="ghp_…" oninput="saveGistConfig()">
-      </div>
-      <div>
-        <label>Gist ID <span style="color:#667">(auto-filled after first push)</span></label>
-        <input id="gist-id" type="text" placeholder="leave blank to create new" oninput="saveGistConfig()">
-      </div>
-      <div class="sync-row">
-        <button onclick="pushToGist()">↑ Push</button>
-        <button onclick="pullFromGist()">↓ Pull</button>
-      </div>
-      <div class="sync-status" id="gist-status"></div>
-    </div>
-  </div>
+  <button onclick="toggleSidebar()">⚡ Sync</button>
+  <span id="sync-indicator"></span>
 
   <a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer">↗ Search</a>
   <span class="hdr-meta">Scraped: ${esc(scrapedAt)}</span>
@@ -468,6 +472,7 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
   }
 
   // ── Gist sync ────────────────────────────────────────────────────────────────
+  const PRESET_GIST_ID = "${GIST_ID}";
   const loadGistCfg = () => { try { return JSON.parse(localStorage.getItem(GIST_KEY) || "{}"); } catch { return {}; } };
   const saveGistConfig = () => {
     localStorage.setItem(GIST_KEY, JSON.stringify({
@@ -475,29 +480,54 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
       gistId: document.getElementById("gist-id").value.trim(),
     }));
   };
-  function toggleSyncPanel() { document.getElementById("sync-panel").classList.toggle("open"); }
-  document.addEventListener("click", (e) => {
-    if (!document.getElementById("sync-filter").contains(e.target))
-      document.getElementById("sync-panel").classList.remove("open");
-  });
+  function toggleSidebar() {
+    document.getElementById("sidebar").classList.toggle("open");
+    document.getElementById("sidebar-overlay").classList.toggle("open");
+  }
   function gistStatus(msg, err) {
     const el = document.getElementById("gist-status");
     el.textContent = msg; el.style.color = err ? "#f87" : "#6a6";
   }
+  function setSyncIndicator(msg, err) {
+    const el = document.getElementById("sync-indicator");
+    el.textContent = msg; el.style.color = err ? "#f87" : "#6a6";
+  }
+  function showTokenModal() {
+    document.getElementById("token-modal").classList.add("open");
+    document.getElementById("modal-token").focus();
+  }
+  function dismissModal() { document.getElementById("token-modal").classList.remove("open"); }
+  function saveModalToken() {
+    const t = document.getElementById("modal-token").value.trim();
+    if (!t) return;
+    document.getElementById("gist-token").value = t;
+    saveGistConfig();
+    dismissModal();
+    pushToGist();
+  }
+  let _pushTimer = null;
+  function autoPush() {
+    const { token } = loadGistCfg();
+    if (!token) { showTokenModal(); return; }
+    clearTimeout(_pushTimer);
+    _pushTimer = setTimeout(pushToGist, 800);
+  }
   async function pushToGist() {
     const { token, gistId } = loadGistCfg();
     if (!token) { gistStatus("Token required", true); return; }
-    gistStatus("Pushing…");
+    setSyncIndicator("⟳ syncing…");
     const body = { description: "willhaben scraper state", public: false,
       files: { "willhaben-state.json": { content: JSON.stringify(adsSnapshot(), null, 2) } } };
     const url = gistId ? "https://api.github.com/gists/" + gistId : "https://api.github.com/gists";
     const res = await fetch(url, { method: gistId ? "PATCH" : "POST",
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       body: JSON.stringify(body) });
-    if (!res.ok) { gistStatus("Error " + res.status, true); return; }
+    if (!res.ok) { gistStatus("Error " + res.status, true); setSyncIndicator("✗ sync failed", true); return; }
     const data = await res.json();
     if (!gistId) { document.getElementById("gist-id").value = data.id; saveGistConfig(); }
-    gistStatus("Pushed ✓ " + new Date().toLocaleTimeString());
+    const t = new Date().toLocaleTimeString();
+    gistStatus("Pushed ✓ " + t);
+    setSyncIndicator("✓ " + t);
   }
   async function pullFromGist() {
     const { token, gistId } = loadGistCfg();
@@ -509,8 +539,13 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     const data = await res.json();
     const content = data.files["willhaben-state.json"]?.content;
     if (!content) { gistStatus("File not found in gist", true); return; }
-    try { mergeAds(JSON.parse(content)); applyAll(); gistStatus("Pulled ✓ " + new Date().toLocaleTimeString()); }
-    catch { gistStatus("Invalid gist content", true); }
+    let parsed;
+    try { parsed = JSON.parse(content); } catch { gistStatus("Invalid JSON in gist", true); return; }
+    mergeAds(parsed);
+    const saved = loadState();
+    const sc = (saved.starred || []).length, hc = (saved.hidden || []).length;
+    applyAll();
+    gistStatus("Pulled ✓ — " + sc + " starred, " + hc + " hidden");
   }
 
   let uiFilters = { starred: false, hidden: false, matching: false };
@@ -518,10 +553,12 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
   function toggleStar(btn) {
     toggleInSet("starred", btn.closest(".card").dataset.url);
     applyAll();
+    autoPush();
   }
   function toggleHide(btn) {
     toggleInSet("hidden", btn.closest(".card").dataset.url);
     applyAll();
+    autoPush();
   }
   function toggleUiFilter(type) {
     uiFilters[type] = !uiFilters[type];
@@ -621,6 +658,7 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
   const _gc = loadGistCfg();
   if (_gc.token) document.getElementById("gist-token").value = _gc.token;
   if (_gc.gistId) document.getElementById("gist-id").value = _gc.gistId;
+  else if (PRESET_GIST_ID) { document.getElementById("gist-id").value = PRESET_GIST_ID; saveGistConfig(); }
 
   // Restore excluded districts from localStorage
   const _excSaved = loadState().excludedDistricts || [];
@@ -629,6 +667,9 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
   updateDistrictBtn();
 
   applyAll();
+
+  // Auto-pull from gist on every page load if configured
+  if (_gc.token && (_gc.gistId || PRESET_GIST_ID)) pullFromGist();
 
   async function doRefresh() {
     const btn = document.getElementById("btn-refresh");
@@ -655,6 +696,55 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     }
   }
 </script>
+
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-hdr">
+    <span>⚡ Gist Sync</span>
+    <button onclick="toggleSidebar()" title="Close">✕</button>
+  </div>
+  <div class="sidebar-body">
+    <div>
+      <label>GitHub token (classic · gist scope)</label>
+      <input id="gist-token" type="password" placeholder="ghp_…" oninput="saveGistConfig()">
+    </div>
+    <div>
+      <label>Gist ID</label>
+      <input id="gist-id" type="text" placeholder="pre-filled from config" oninput="saveGistConfig()">
+    </div>
+    <div class="sidebar-btn-row">
+      <button onclick="pushToGist()">↑ Push now</button>
+      <button onclick="pullFromGist()">↓ Pull now</button>
+    </div>
+    <div class="sidebar-status" id="gist-status"></div>
+    <div class="sidebar-info">
+      Auto-syncs on every star / hide.<br>
+      Use Push / Pull to sync manually across devices.<br><br>
+      Token stored in localStorage only — never sent anywhere except api.github.com.
+    </div>
+    <div style="border-top:1px solid #333;padding-top:10px;display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:11px;color:#9aa">Local backup</div>
+      <div class="sidebar-btn-row">
+        <button onclick="exportState()">↓ Export JSON</button>
+        <button onclick="document.getElementById('import-file').click()">↑ Import JSON</button>
+      </div>
+      <input id="import-file" type="file" accept=".json" onchange="importState(this)" style="display:none">
+    </div>
+  </div>
+</aside>
+
+<div class="modal-backdrop" id="token-modal">
+  <div class="modal-box">
+    <h3>GitHub token needed</h3>
+    <p>Enter a classic personal access token with <strong>gist</strong> scope to auto-sync starred &amp; hidden ads.</p>
+    <p>GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → gist scope.</p>
+    <input id="modal-token" type="password" placeholder="ghp_…">
+    <div class="modal-btn-row">
+      <button onclick="saveModalToken()">Save &amp; sync</button>
+      <button onclick="dismissModal()">Skip (local only)</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>`;
 };
