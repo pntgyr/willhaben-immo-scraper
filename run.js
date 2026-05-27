@@ -191,7 +191,7 @@ const detectFeatures = (r) => {
     abstellraum: fkeys.includes("abstellraum"),
     outdoor:     hasOutdoor,
   };
-  const passes = criteria.badewanne && criteria.keller && criteria.abstellraum;
+  const passes = criteria.keller && criteria.abstellraum;
 
   // Strip criteria labels from badges — criteria bar already shows them
   const CRITERIA_LABELS = new Set(["badewanne","keller","abstellraum","loggia","balkon","terrasse","dachterrasse","garten","wintergarten"]);
@@ -224,8 +224,9 @@ const toHtml = (rows, sourceUrl, scrapedAt) => {
     const featureKeys = features.map((f) => f.label.toLowerCase()).join(",");
     const crit = (ok, label) => `<span class="crit ${ok ? "crit-ok" : "crit-miss"}">${ok ? "✓" : "✗"} ${label}</span>`;
     const outdoorLabel = `<strong class="outdoor-label ${criteria.outdoor ? "outdoor-present" : "outdoor-missing"}">Outdoor</strong>`;
+    const badewanneLabel = `<strong class="outdoor-label ${criteria.badewanne ? "outdoor-present" : "outdoor-missing"}">Badewanne</strong>`;
     const criteriaBar = `<div class="criteria-bar">
-      ${crit(criteria.badewanne, "Badewanne")}
+      ${badewanneLabel}
       ${crit(criteria.keller, "Keller")}
       ${crit(criteria.abstellraum, "Abstellraum")}
       ${outdoorLabel}
